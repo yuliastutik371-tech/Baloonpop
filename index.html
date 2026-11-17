@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BALLOON POP – PECAHKAN BALON PINTAR</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <!-- Google Font: Fredoka / Bubblegum Sans look -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            font-family: 'Fredoka', cursive, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Animated Sky Background */
+        .sky-bg {
+            background: linear-gradient(180deg, #38bdf8 0%, #7dd3fc 60%, #bae6fd 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Floating Cloud Animation */
+        .cloud {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 50px;
+            animation: moveClouds linear infinite;
+        }
+        .cloud::before, .cloud::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 50%;
+        }
+        .cloud::before { width: 50px; height: 50px; top: -20px; left: 15px; }
+        .cloud::after { width: 40px; height: 40px; top: -15px; right: 15px; }
+
+        @keyframes moveClouds {
+            0% { transform: translateX(-200px); }
+            100% { transform: translateX(100vw); }
+        }
+
+        /* 3D Balloon Effect */
+        .balloon-container {
+            position: absolute;
+            cursor: pointer;
+            transition: transform 0.1s ease-out;
+            touch-action: manipulation;
+        }
+
+        .balloon-body {
+            width: 110px;
+            height: 135px;
+            border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset -12px -12px 25px rgba(0,0,0,0.15), inset 10px 10px 15px rgba(255,255,255,0.6);
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* Glossy shine overlay */
+        .balloon-body::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 18px;
+            width: 25px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            transform: rotate(-30deg);
+        }
+
+        /* Balloon knot & string */
+        .balloon-knot {
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 12px solid currentColor;
+        }
+
+        .balloon-string {
+            position: absolute;
+            bottom: -45px;
+            left: 50%;
+            width: 2px;
+            height: 40px;
+            background: rgba(0,0,0,0.25);
+            transform-origin: top center;
+            animation: stringSway 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes stringSway {
+            0% { transform: rotate(-5deg); }
+            100% { transform: rotate(5deg); }
+        }
+
+        /* Floating motion for balloons */
+        @keyframes floatUp {
+            0% { transform: translateY(0px) rotate(-2deg); }
+            50% { transform: translateY(-18px) rotate(2deg); }
+            100% { transform: translateY(0px) rotate(-2deg); }
+        }
+
+        .floating {
+            animation: floatUp 3s ease-in-out infinite;
+        }
+
+        /* Shake animation for wrong balloon */
+        .shake {
+            animation: shakeAnim 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shakeAnim {
+            10%, 90% { transform: translate3d(-4px, 0, 0); }
+            20%, 80% { transform: translate3d(8px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-10px, 0, 0); }
+            40%, 60% { transform: translate3d(10px, 0, 0); }
+        }
+
+        /* Hand Cursor Overlay */
+        #handCursor {
+            position: fixed;
+            pointer-events: none;
+            z-index: 100;
+            transform: translate(-50%, -50%);
+            transition: width 0.1s, height 0.1s, background-color 0.1s;
+        }
+
+        /* Particle Canvas overlay */
+        #particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body class="sky-bg min-h-screen flex flex-col justify-between overflow-hidden">
+
+    <!-- Background Clouds -->
+    <div class="cloud w-48 h-14 top-10" style="animation-duration: 35s; animation-delay: 0s;"></div>
+    <div class="cloud w-64 h-16 top-32" style="animation-duration: 45s; animation-delay: -15s;"></div>
+    <div class="cloud w-56 h-14 top-60" style="animation-duration: 40s; animation-delay: -7s;"></div>
+
+    <!-- Particle Overlay for Balloon Explosion -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- Hand Cursor Circle Indicator -->
+    <div id="handCursor" class="hidden rounded-full border-4 border-yellow-300 bg-yellow-400/40 shadow-lg flex items-center justify-center text-xs font-bold text-white transition-all">
+        <div id="cursorDot" class="w-4 h-4 bg-red-500 rounded-full"></div>
+    </div>
+
+    <!-- Video Camera Feed (PiP Style) -->
+    <div id="cameraPipContainer" class="hidden fixed bottom-4 right-4 z-40 bg-white/80 p-2 rounded-2xl shadow-xl border-4 border-white backdrop-blur-sm">
+        <div class="relative w-36 h-28 overflow-hidden rounded-xl bg-slate-900 flex items-center justify-center">
+            <video id="webcam" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline></video>
+            <div id="camStatus" class="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Kamera
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN NAVBAR -->
+    <header class="relative z-30 bg-white/85 backdrop-blur-md border-b-4 border-sky-300 px-4 py-3 shadow-md">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-sky-500 text-white rounded-full flex items-center justify-center font-bold text-xl shadow-inner">
+                    <i class="fa-solid font-bold text-yellow-300 fa-balloon">🎈</i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sky-800 text-lg md:text-xl leading-tight">PECAHKAN BALON PINTAR</h1>
+                    <p class="text-xs text-sky-600 hidden sm:block">Matematika Kelas 1 SD</p>
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div id="gameStatsBar" class="hidden flex items-center gap-3 sm:gap-6">
+                <div class="bg-sky-100 px-3 py-1.5 rounded-xl border-2 border-sky-300 text-sky-800 flex items-center gap-2">
+                    <i class="fa-solid fa-user text-sky-500"></i>
+                    <span id="playerDisplay" class="font-bold text-sm md:text-base max-w-[100px] truncate">Siswa</span>
+                </div>
+                <div class="bg-amber-100 px-3 py-1.5 rounded-xl border-2 border-amber-300 text-amber-800 flex items-center gap-2">
+                    <i class="fa-solid fa-star text-amber-500"></i>
+                    <span id="scoreDisplay" class="font-bold text-sm md:text-base">0</span> Poin
+                </div>
+                <div class="bg-indigo-100 px-3 py-1.5 rounded-xl border-2 border-indigo-300 text-indigo-800 flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-indigo-500"></i>
+                    <span id="timerDisplay" class="font-bold text-sm md:text-base">00:00</span>
+                </div>
+            </div>
+
+            <!-- Controls (Sound & Camera Toggle) -->
+            <div class="flex items-center gap-2">
+                <button id="camToggleBtn" class="w-10 h-10 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl flex items-center justify-center transition shadow-sm" title="Aktifkan Kamera">
+                    <i class="fa-solid fa-camera"></i>
+                </button>
+                <button id="soundToggleBtn" class="w-10 h-10 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl flex items-center justify-center transition shadow-sm" title="Suara On/Off">
+                    <i class="fa-solid fa-volume-high" id="soundIcon"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- CONTENT WRAPPER -->
+    <main class="relative z-20 flex-grow flex items-center justify-center p-4">
+
+        <!-- 1. START SCREEN -->
+        <div id="startScreen" class="w-full max-w-lg bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-3xl shadow-2xl border-4 border-sky-300 text-center space-y-6">
+            <div class="space-y-2">
+                <div class="inline-block p-4 bg-sky-100 rounded-full text-5xl mb-2 animate-bounce">
+                    🎈
+                </div>
+                <h2 class="text-3xl font-extrabold text-sky-800">BALLOON POP</h2>
+                <p class="text-sky-600 font-semibold">Petualangan Matematika Seru Kelas 1!</p>
+            </div>
+
+            <div class="bg-sky-50 p-4 rounded-2xl border-2 border-sky-200 text-left space-y-2 text-sm text-sky-900">
+                <p class="font-bold text-sky-800 flex items-center gap-2">
+                    <i class="fa-solid fa-gamepad text-amber-500"></i> Cara Bermain:
+                </p>
+                <ul class="list-disc list-inside space-y-1 text-slate-700">
+                    <li>Pilih balon dengan jawaban matematika yang tepat.</li>
+                    <li>Gunakan <b>Mouse / Sentuh Layar</b> atau ikuti petunjuk <b>Gestur Tangan (Kamera)</b>.</li>
+                    <li>Pinch (jepit jempol & telunjuk) untuk memecahkan balon pakai kamera!</li>
+                </ul>
+            </div>
+
+            <div class="space-y-3 text-left">
+                <label for="playerName" class="block font-bold text-sky-800 text-sm">Nama Lengkap Siswa:</label>
+                <input type="text" id="playerName" placeholder="Masukkan namamu disini..." class="w-full px-4 py-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-500 text-lg font-bold text-slate-800 placeholder-slate-400 shadow-inner">
+            </div>
+
+            <div class="pt-2 flex flex-col sm:flex-row gap-3">
+                <button id="startGameBtn" class="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> MULAI MAIN
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. GAMEPLAY SCREEN -->
+        <div id="gameplayScreen" class="hidden w-full max-w-5xl h-[78vh] relative flex flex-col justify-between">
+            
+            <!-- Question Banner -->
+            <div class="w-full bg-white/90 backdrop-blur-md p-4 sm:p-5 rounded-2xl shadow-xl border-4 border-sky-400 text-center relative z-20">
+                <!-- Progress & Category Bar -->
+                <div class="flex items-center justify-between mb-2">
+                    <span id="levelBadge" class="bg-sky-500 text-white font-bold px-3 py-1 rounded-full text-xs sm:text-sm shadow-sm">
+                        Level 1 / 5
+                    </span>
+                    <!-- Progress Bar -->
+                    <div class="flex-1 mx-4 bg-slate-200 rounded-full h-3 overflow-hidden border border-slate-300">
+                        <div id="progressBar" class="bg-emerald-400 h-full w-0 transition-all duration-500 rounded-full"></div>
+                    </div>
+                    <span id="questionCategory" class="bg-amber-400 text-amber-950 font-bold px-3 py-1 rounded-full text-xs sm:text-sm shadow-sm">
+                        LOTS
+                    </span>
+                </div>
+
+                <!-- Question Text -->
+                <h2 id="questionText" class="text-xl sm:text-3xl font-extrabold text-slate-800 tracking-wide mt-1">
+                    Berapa jumlah apel? 🍎 + 🍎 = ...
+                </h2>
+            </div>
+
+            <!-- Balloon Play Area -->
+            <div id="balloonArea" class="relative flex-grow w-full h-full overflow-hidden my-2">
+                <!-- Floating balloons injected dynamically -->
+            </div>
+
+            <!-- Feedback Toast Banner -->
+            <div id="feedbackToast" class="hidden absolute bottom-4 left-1/2 transform -translate-x-1/2 z-30 px-6 py-3 rounded-2xl shadow-2xl font-bold text-lg text-white transition-all flex items-center gap-3">
+                <span id="feedbackIcon" class="text-2xl"></span>
+                <span id="feedbackMsg">Jawaban Benar!</span>
+            </div>
+        </div>
+
+        <!-- 3. FINAL RESULTS SCREEN -->
+        <div id="resultScreen" class="hidden w-full max-w-md bg-white/95 backdrop-blur-md p-8 rounded-3xl shadow-2xl border-4 border-amber-300 text-center space-y-6">
+            <div class="space-y-2">
+                <div id="trophyIcon" class="text-6xl animate-bounce">🏆</div>
+                <h2 class="text-3xl font-extrabold text-slate-800">HEBAT SEKALI!</h2>
+                <p id="resultPlayerName" class="text-lg font-bold text-sky-600">Nama Siswa</p>
+            </div>
+
+            <!-- Stars Rating -->
+            <div class="flex justify-center gap-2 text-4xl text-amber-400" id="starContainer">
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+            </div>
+
+            <!-- Score Summary Card -->
+            <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 space-y-2">
+                <div class="flex justify-between items-center text-slate-700 font-semibold">
+                    <span>Total Skor:</span>
+                    <span id="finalScore" class="text-2xl font-extrabold text-amber-600">0</span>
+                </div>
+                <div class="flex justify-between items-center text-slate-700 text-sm">
+                    <span>Waktu Waktu Selesai:</span>
+                    <span id="finalTime" class="font-bold text-slate-800">00:00</span>
+                </div>
+            </div>
+
+            <p id="appreciationMsg" class="text-slate-600 italic font-semibold text-sm">
+                Kamu adalah Bintang Matematika! Lengkapi semua tantangan dengan sempurna!
+            </p>
+
+            <button id="restartBtn" class="w-full py-4 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> MAIN LAGI
+            </button>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="relative z-20 text-center py-2 text-xs text-sky-800 font-semibold bg-white/40 backdrop-blur-sm">
+        MediaPipe Hands & Web Audio API Powered • Matematika SD Kelas 1
+    </footer>
+
+    <!-- JAVASCRIPT GAME LOGIC -->
+    <script>
+        /* ==========================================================================
+           1. GAME QUESTIONS & LEVEL DATA (Grade 1 Math LOTS, MOTS, HOTS)
+           ========================================================================== */
+        const gameLevels = [
+            // Level 1
+            {
+                level: 1,
+                questions: [
+                    { type: 'LOTS', text: 'Hitung jumlah benda: 🍎 🍎 🍎 🍎', options: ['3', '4', '5', '6'], correct: '4' },
+                    { type: 'MOTS', text: 'Berapakah hasil dari 5 + 3 ?', options: ['7', '8', '9', '6'], correct: '8' },
+                    { type: 'HOTS', text: 'Budi punya 4 permen. Ibu memberi 3 permen lagi. Berapa total permen Budi?', options: ['5', '6', '7', '8'], correct: '7' }
+                ]
+            },
+            // Level 2
+            {
+                level: 2,
+                questions: [
+                    { type: 'LOTS', text: 'Manakah angka yang LEBIH BESAR?', options: ['5', '9', '2', '4'], correct: '9' },
+                    { type: 'MOTS', text: 'Berapakah hasil dari 10 - 4 ?', options: ['5', '6', '7', '4'], correct: '6' },
+                    { type: 'HOTS', text: 'Pola angka: 2, 4, 6, ..., 10. Angka yang hilang adalah?', options: ['7', '8', '9', '5'], correct: '8' }
+                ]
+            },
+            // Level 3
+            {
+                level: 3,
+                questions: [
+                    { type: 'LOTS', text: 'Bentukapakah ini? 🔴 (Memiliki 0 sudut)', options: ['Segitiga', 'Lingkaran', 'Persegi', 'Kotak'], correct: 'Lingkaran' },
+                    { type: 'MOTS', text: 'Berapakah hasil dari 7 + 6 ?', options: ['12', '13', '14', '15'], correct: '13' },
+                    { type: 'HOTS', text: 'Siti ada 12 balon. 3 balon meletus. Berapa balon Siti yang tersisa?', options: ['8', '9', '10', '11'], correct: '9' }
+                ]
+            },
+            // Level 4
+            {
+                level: 4,
+                questions: [
+                    { type: 'LOTS', text: 'Lambang bilangan dari "LIMA BELAS" adalah...', options: ['12', '15', '51', '25'], correct: '15' },
+                    { type: 'MOTS', text: 'Berapakah hasil dari 15 - 7 ?', options: ['7', '8', '9', '10'], correct: '8' },
+                    { type: 'HOTS', text: 'Doni punya 6 kelereng, Andi punya 8 kelereng. Berapa gabungan kelereng mereka?', options: ['12', '13', '14', '15'], correct: '14' }
+                ]
+            },
+            // Level 5
+            {
+                level: 5,
+                questions: [
+                    { type: 'LOTS', text: 'Bangun ruang yang berbentuk seperti bola sepak adalah...', options: ['Kubus', 'Bola', 'Tabung', 'Balok'], correct: 'Bola' },
+                    { type: 'MOTS', text: 'Berapakah hasil dari 12 + 5 - 3 ?', options: ['13', '14', '15', '16'], correct: '14' },
+                    { type: 'HOTS', text: 'Ada 18 anak bermain dilapangan. 5 anak pulang. Lalu datang 2 anak. Berapa anak sekarang?', options: ['13', '14', '15', '16'], correct: '15' }
+                ]
+            }
+        ];
+
+        /* ==========================================================================
+           2. GLOBAL STATE VARIABLES
+           ========================================================================== */
+        let playerName = "";
+        let currentLevelIndex = 0;
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let timerSeconds = 0;
+        let timerInterval = null;
+        let soundEnabled = true;
+        let cameraActive = false;
+
+        // Balloon Colors Palette
+        const balloonColors = [
+            { bg: '#ef4444', border: '#b91c1c' }, // Red
+            { bg: '#3b82f6', border: '#1d4ed8' }, // Blue
+            { bg: '#10b981', border: '#047857' }, // Green
+            { bg: '#f59e0b', border: '#b45309' }, // Amber/Yellow
+            { bg: '#8b5cf6', border: '#6d28d9' }, // Purple
+            { bg: '#ec4899', border: '#be185d' }  // Pink
+        ];
+
+        /* ==========================================================================
+           3. AUDIO SYNTHESIZER (Web Audio API - No External Sound Files Required)
+           ========================================================================== */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playPopSound() {
+            if (!soundEnabled) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.08);
+                
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+            } catch(e) {}
+        }
+
+        function playCorrectSound() {
+            if (!soundEnabled) return;
+            try {
+                const now = audioCtx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.2);
+                });
+            } catch(e) {}
+        }
+
+        function playWrongSound() {
+            if (!soundEnabled) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.setValueAtTime(180, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } catch(e) {}
+        }
+
+        /* ==========================================================================
+           4. CANVAS PARTICLE SYSTEM (Balloon Pop Explosion Effects)
+           ========================================================================== */
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function createExplosion(x, y, color) {
+            playPopSound();
+            for (let i = 0; i < 24; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 8 + 2;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 6 + 4,
+                    color: color,
+                    alpha: 1,
+                    decay: Math.random() * 0.03 + 0.015
+                });
+            }
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.15; // Gravity
+                p.alpha -= p.decay;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+        /* ==========================================================================
+           5. GAME CONTROL & MECHANICS LOGIC
+           ========================================================================== */
+        const startScreen = document.getElementById('startScreen');
+        const gameplayScreen = document.getElementById('gameplayScreen');
+        const resultScreen = document.getElementById('resultScreen');
+        const gameStatsBar = document.getElementById('gameStatsBar');
+        const balloonArea = document.getElementById('balloonArea');
+        const questionText = document.getElementById('questionText');
+        const levelBadge = document.getElementById('levelBadge');
+        const questionCategory = document.getElementById('questionCategory');
+        const progressBar = document.getElementById('progressBar');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const playerDisplay = document.getElementById('playerDisplay');
+        const feedbackToast = document.getElementById('feedbackToast');
+        const soundToggleBtn = document.getElementById('soundToggleBtn');
+        const soundIcon = document.getElementById('soundIcon');
+        const camToggleBtn = document.getElementById('camToggleBtn');
+
+        // Start Game Listener
+        document.getElementById('startGameBtn').addEventListener('click', () => {
+            const input = document.getElementById('playerName').value.trim();
+            playerName = input ? input : "Siswa Pintar";
+            playerDisplay.textContent = playerName;
+
+            // Audio Context Resume for Browsers
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            startScreen.classList.add('hidden');
+            gameplayScreen.classList.remove('hidden');
+            gameStatsBar.classList.remove('hidden');
+
+            resetGame();
+        });
+
+        // Restart Game
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            resultScreen.classList.add('hidden');
+            gameplayScreen.classList.remove('hidden');
+            resetGame();
+        });
+
+        // Mute / Unmute Sound Toggle
+        soundToggleBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            if (soundEnabled) {
+                soundIcon.className = "fa-solid fa-volume-high";
+                soundToggleBtn.classList.remove('opacity-50');
+            } else {
+                soundIcon.className = "fa-solid fa-volume-xmark";
+                soundToggleBtn.classList.add('opacity-50');
+            }
+        });
+
+        function resetGame() {
+            currentLevelIndex = 0;
+            currentQuestionIndex = 0;
+            score = 0;
+            timerSeconds = 0;
+            scoreDisplay.textContent = score;
+            startTimer();
+            loadQuestion();
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                const mins = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+                const secs = String(timerSeconds % 60).padStart(2, '0');
+                timerDisplay.textContent = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function loadQuestion() {
+            balloonArea.innerHTML = ''; // Clear previous balloons
+
+            const currentLevelData = gameLevels[currentLevelIndex];
+            const currentQ = currentLevelData.questions[currentQuestionIndex];
+
+            // Update Progress UI
+            levelBadge.textContent = `Level ${currentLevelIndex + 1} / ${gameLevels.length}`;
+            questionCategory.textContent = currentQ.type;
+            questionText.textContent = currentQ.text;
+
+            // Category Badge Color
+            if (currentQ.type === 'LOTS') {
+                questionCategory.className = "bg-emerald-400 text-emerald-950 font-bold px-3 py-1 rounded-full text-xs sm:text-sm shadow-sm";
+            } else if (currentQ.type === 'MOTS') {
+                questionCategory.className = "bg-amber-400 text-amber-950 font-bold px-3 py-1 rounded-full text-xs sm:text-sm shadow-sm";
+            } else {
+                questionCategory.className = "bg-rose-400 text-rose-950 font-bold px-3 py-1 rounded-full text-xs sm:text-sm shadow-sm";
+            }
+
+            // Progress bar calculation
+            const totalQuestions = gameLevels.length * 3;
+            const currentProgressIndex = (currentLevelIndex * 3) + currentQuestionIndex;
+            const progressPercent = (currentProgressIndex / totalQuestions) * 100;
+            progressBar.style.width = `${progressPercent}%`;
+
+            // Spawn Balloons
+            spawnBalloons(currentQ.options, currentQ.correct);
+        }
+
+        function spawnBalloons(options, correctAnswer) {
+            const containerWidth = balloonArea.clientWidth;
+            const containerHeight = balloonArea.clientHeight;
+
+            // Shuffle options
+            const shuffled = [...options].sort(() => Math.random() - 0.5);
+            const count = shuffled.length;
+
+            shuffled.forEach((opt, index) => {
+                const balloonEl = document.createElement('div');
+                balloonEl.className = 'balloon-container floating';
+                balloonEl.dataset.value = opt;
+                balloonEl.dataset.isCorrect = (opt === correctAnswer);
+
+                // Position calculations (Distribute horizontally)
+                const colWidth = containerWidth / count;
+                const posX = colWidth * index + (colWidth / 2) - 55 + (Math.random() * 20 - 10);
+                const posY = Math.random() * (containerHeight - 220) + 20;
+
+                balloonEl.style.left = `${Math.max(10, Math.min(posX, containerWidth - 120))}px`;
+                balloonEl.style.top = `${posY}px`;
+
+                // Color Selection
+                const colorObj = balloonColors[index % balloonColors.length];
+
+                balloonEl.innerHTML = `
+                    <div class="balloon-body" style="background-color: ${colorObj.bg}; color: ${colorObj.border};">
+                        <span class="text-white font-extrabold text-2xl drop-shadow-md">${opt}</span>
+                        <div class="balloon-knot" style="border-bottom-color: ${colorObj.border};"></div>
+                    </div>
+                    <div class="balloon-string"></div>
+                `;
+
+                // Add Click / Touch Event Handler
+                balloonEl.addEventListener('click', (e) => {
+                    popBalloon(balloonEl, e.clientX, e.clientY);
+                });
+
+                balloonArea.appendChild(balloonEl);
+            });
+        }
+
+        let isProcessingPop = false;
+        function popBalloon(balloonEl, clickX, clickY) {
+            if (isProcessingPop) return;
+
+            const isCorrect = balloonEl.dataset.isCorrect === 'true';
+            const rect = balloonEl.getBoundingClientRect();
+            const centerX = clickX || (rect.left + rect.width / 2);
+            const centerY = clickY || (rect.top + rect.height / 2);
+
+            const colorBg = balloonEl.querySelector('.balloon-body').style.backgroundColor;
+
+            if (isCorrect) {
+                isProcessingPop = true;
+                createExplosion(centerX, centerY, colorBg);
+                balloonEl.style.transform = 'scale(0.0)';
+                balloonEl.style.opacity = '0';
+                
+                playCorrectSound();
+                score += 100;
+                scoreDisplay.textContent = score;
+
+                showToast("BENAR! 🎉 Great Job!", "bg-emerald-500", "👏");
+
+                setTimeout(() => {
+                    isProcessingPop = false;
+                    nextQuestion();
+                }, 1200);
+
+            } else {
+                playWrongSound();
+                balloonEl.classList.add('shake');
+                showToast("Coba Lagi ya! 💡", "bg-rose-500", "❌");
+                setTimeout(() => {
+                    balloonEl.classList.remove('shake');
+                }, 600);
+            }
+        }
+
+        function showToast(msg, bgColorClass, iconStr) {
+            feedbackToast.className = `absolute bottom-4 left-1/2 transform -translate-x-1/2 z-30 px-6 py-3 rounded-2xl shadow-2xl font-bold text-lg text-white transition-all flex items-center gap-3 ${bgColorClass}`;
+            document.getElementById('feedbackMsg').textContent = msg;
+            document.getElementById('feedbackIcon').textContent = iconStr;
+            feedbackToast.classList.remove('hidden');
+
+            setTimeout(() => {
+                feedbackToast.classList.add('hidden');
+            }, 1000);
+        }
+
+        function nextQuestion() {
+            currentQuestionIndex++;
+            if (currentQuestionIndex >= 3) {
+                currentQuestionIndex = 0;
+                currentLevelIndex++;
+            }
+
+            if (currentLevelIndex >= gameLevels.length) {
+                finishGame();
+            } else {
+                loadQuestion();
+            }
+        }
+
+        function finishGame() {
+            clearInterval(timerInterval);
+            gameplayScreen.classList.add('hidden');
+            resultScreen.classList.remove('hidden');
+
+            document.getElementById('resultPlayerName').textContent = playerName;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalTime').textContent = timerDisplay.textContent;
+
+            // Star Rating Logic
+            const maxScore = gameLevels.length * 3 * 100;
+            const starContainer = document.getElementById('starContainer');
+            const trophyIcon = document.getElementById('trophyIcon');
+            const appreciationMsg = document.getElementById('appreciationMsg');
+
+            if (score >= maxScore * 0.9) {
+                starContainer.innerHTML = '<i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>';
+                trophyIcon.textContent = '🏆';
+                appreciationMsg.textContent = 'Luar biasa! Kamu menyelesaikan semua soal dengan Sempurna! ⭐⭐⭐';
+            } else if (score >= maxScore * 0.6) {
+                starContainer.innerHTML = '<i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-regular fa-star"></i>';
+                trophyIcon.textContent = '🥇';
+                appreciationMsg.textContent = 'Kerja Bagus! Kamu pintar matematika, terus berlatih ya! ⭐⭐';
+            } else {
+                starContainer.innerHTML = '<i class="fa-solid fa-star"></i><i class="fa-regular fa-star"></i><i class="fa-regular fa-star"></i>';
+                trophyIcon.textContent = '🌟';
+                appreciationMsg.textContent = 'Hebat sudah mencoba! Ayo main lagi untuk dapat skor tertinggi! ⭐';
+            }
+        }
+
+        /* ==========================================================================
+           6. MEDIAPIPE HANDS CAMERA DETECTOR & PINCH GESTURE LOGIC
+           ========================================================================== */
+        const videoElement = document.getElementById('webcam');
+        const cameraPipContainer = document.getElementById('cameraPipContainer');
+        const handCursor = document.getElementById('handCursor');
+        const cursorDot = document.getElementById('cursorDot');
+
+        let hands = null;
+        let camera = null;
+        let isPinching = false;
+
+        function initMediaPipe() {
+            hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            hands.onResults(onHandResults);
+
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+        }
+
+        camToggleBtn.addEventListener('click', () => {
+            if (!cameraActive) {
+                // User Consent / Activate Camera
+                if (!hands) initMediaPipe();
+                camera.start()
+                    .then(() => {
+                        cameraActive = true;
+                        cameraPipContainer.classList.remove('hidden');
+                        handCursor.classList.remove('hidden');
+                        camToggleBtn.classList.add('bg-emerald-500', 'text-white');
+                    })
+                    .catch((err) => {
+                        alert('Gagal mengakses kamera: Mohon berikan izin kamera pada browser Anda.');
+                    });
+            } else {
+                // Deactivate Camera
+                camera.stop();
+                cameraActive = false;
+                cameraPipContainer.classList.add('hidden');
+                handCursor.classList.add('hidden');
+                camToggleBtn.classList.remove('bg-emerald-500', 'text-white');
+            }
+        });
+
+        function onHandResults(results) {
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                handCursor.style.display = 'none';
+                return;
+            }
+
+            handCursor.style.display = 'flex';
+            const landmarks = results.multiHandLandmarks[0];
+
+            // Index Finger Tip (Landmark 8) & Thumb Tip (Landmark 4)
+            const indexTip = landmarks[8];
+            const thumbTip = landmarks[4];
+
+            // Map normalized coordinates to screen size (mirrored camera view)
+            const screenX = (1 - indexTip.x) * window.innerWidth;
+            const screenY = indexTip.y * window.innerHeight;
+
+            // Move custom visual cursor
+            handCursor.style.left = `${screenX}px`;
+            handCursor.style.top = `${screenY}px`;
+
+            // Calculate Euclidean distance between index tip & thumb tip for Pinch gesture
+            const dx = (indexTip.x - thumbTip.x);
+            const dy = (indexTip.y - thumbTip.y);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Pinch Threshold
+            if (distance < 0.075) {
+                if (!isPinching) {
+                    isPinching = true;
+                    cursorDot.className = "w-6 h-6 bg-emerald-500 rounded-full scale-125 transition-transform";
+                    handCursor.classList.add('ring-4', 'ring-emerald-300');
+
+                    // Check collision with balloons at cursor coordinates
+                    checkBalloonPopAtCursor(screenX, screenY);
+                }
+            } else {
+                if (isPinching) {
+                    isPinching = false;
+                    cursorDot.className = "w-4 h-4 bg-red-500 rounded-full";
+                    handCursor.classList.remove('ring-4', 'ring-emerald-300');
+                }
+            }
+        }
+
+        function checkBalloonPopAtCursor(x, y) {
+            const balloons = document.querySelectorAll('.balloon-container');
+            balloons.forEach((b) => {
+                const rect = b.getBoundingClientRect();
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                    popBalloon(b, x, y);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
